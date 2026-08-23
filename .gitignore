@@ -8,6 +8,8 @@
 /Intermediate
 /Saved
 CachedAssetRegistry/
+CrashReportClient/
+Logs/
 
 #################################
 # Visual Studio Generated Files #

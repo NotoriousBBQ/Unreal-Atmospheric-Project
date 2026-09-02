@@ -5,7 +5,6 @@
 #include "SurvivalTemplateGameplayTags.h"
 #include "EnvironmentQuery/EnvQuery.h"
 #include "EnvironmentQuery/EnvQueryManager.h"
-#include "AbilitySystemComponent.h"
 
 UGA_FleeToShadow::UGA_FleeToShadow()
 {
@@ -25,22 +24,43 @@ void UGA_FleeToShadow::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
-	if (!Avatar || !FleeQuery)
+	if (!Avatar)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("GA_FleeToShadow: avatar is null; ending. Assign FleeQuery on the ability BP."));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	if (!FleeQuery)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GA_FleeToShadow: FleeQuery is null; ending. Assign FleeQuery on the ability BP."));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
 	FEnvQueryRequest Request(FleeQuery, Avatar);
-	Request.Execute(EEnvQueryRunMode::SingleResult, this, &UGA_FleeToShadow::OnQueryFinished);
+	PendingQueryID = Request.Execute(EEnvQueryRunMode::SingleResult, this, &UGA_FleeToShadow::OnQueryFinished);
 }
 
 void UGA_FleeToShadow::OnQueryFinished(TSharedPtr<FEnvQueryResult> Result)
 {
+	// The ability was cancelled/ended (e.g. StateTree left the Fleeing state) while the
+	// async EQS query was in flight: do not start an unmanaged nav move.
+	if (!IsActive())
+	{
+		return;
+	}
+
+	// Reject a callback from a previous activation racing this one on the same AIController.
+	if (!Result.IsValid() || Result->QueryID != PendingQueryID)
+	{
+		return;
+	}
+	PendingQueryID = INDEX_NONE;
+
 	const bool bOk = Result.IsValid() && Result->IsSuccessful() && Result->Items.Num() > 0;
 	if (!bOk)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("GA_FleeToShadow: no viable hiding spot; ending."));
+		UE_LOG(LogTemp, Warning, TEXT("GA_FleeToShadow: no viable hiding spot; ending."));
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		return;
 	}

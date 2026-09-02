@@ -24,6 +24,10 @@ struct FSTTask_ActivateAbilityByTagInstanceData
 
 	/** Resolved ability system component, cached for ExitState. */
 	TWeakObjectPtr<UAbilitySystemComponent> ASC;
+
+	/** True once the tagged ability has been observed active at least once; distinguishes a
+	 *  completed flee from an ability that activated and instantly ended (a wiring error). */
+	bool bSawAbilityActive = false;
 };
 
 /**

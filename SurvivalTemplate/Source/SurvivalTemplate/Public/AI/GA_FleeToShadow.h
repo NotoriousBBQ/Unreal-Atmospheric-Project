@@ -38,4 +38,7 @@ private:
 
 	UFUNCTION()
 	void OnMoveFinished(bool bSuccess);
+
+	/** ID of the EQS query started by the current activation; guards against stale callbacks from a previous activation. */
+	int32 PendingQueryID = INDEX_NONE;
 };

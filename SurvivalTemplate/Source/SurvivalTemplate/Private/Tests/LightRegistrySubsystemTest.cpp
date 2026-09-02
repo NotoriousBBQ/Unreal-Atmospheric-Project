@@ -1,6 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+// Core header, safe for every target; also defines WITH_AUTOMATION_TESTS used by the guard below.
 #include "Misc/AutomationTest.h"
+
+#if WITH_EDITOR && WITH_AUTOMATION_TESTS
+
 #include "Light/LightRegistrySubsystem.h"
 #include "Light/LightSourceComponent.h"
 #include "Engine/World.h"
@@ -47,3 +51,5 @@ bool FLightRegistrySubsystemTest::RunTest(const FString& Parameters)
 
     return true;
 }
+
+#endif // WITH_EDITOR && WITH_AUTOMATION_TESTS

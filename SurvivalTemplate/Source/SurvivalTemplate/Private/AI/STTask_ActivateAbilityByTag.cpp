@@ -50,6 +50,7 @@ EStateTreeRunStatus FSTTask_ActivateAbilityByTag::EnterState(FStateTreeExecution
 {
 	FInstanceDataType& Data = Context.GetInstanceData(*this);
 	Data.ASC.Reset();
+	Data.bSawAbilityActive = false;
 
 	if (!Data.AbilityTag.IsValid())
 	{
@@ -68,12 +69,16 @@ EStateTreeRunStatus FSTTask_ActivateAbilityByTag::EnterState(FStateTreeExecution
 	}
 
 	Data.ASC = ASC;
+	if (IsAbilityWithTagActive(*ASC, Data.AbilityTag))
+	{
+		Data.bSawAbilityActive = true;
+	}
 	return EStateTreeRunStatus::Running;
 }
 
 EStateTreeRunStatus FSTTask_ActivateAbilityByTag::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
-	const FInstanceDataType& Data = Context.GetInstanceData(*this);
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
 
 	const UAbilitySystemComponent* ASC = Data.ASC.Get();
 	if (ASC == nullptr)
@@ -81,7 +86,15 @@ EStateTreeRunStatus FSTTask_ActivateAbilityByTag::Tick(FStateTreeExecutionContex
 		return EStateTreeRunStatus::Failed;
 	}
 
-	return IsAbilityWithTagActive(*ASC, Data.AbilityTag) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
+	if (IsAbilityWithTagActive(*ASC, Data.AbilityTag))
+	{
+		Data.bSawAbilityActive = true;
+		return EStateTreeRunStatus::Running;
+	}
+
+	// Ability is no longer active. Only a genuine completion if we ever saw it running;
+	// otherwise it activated and instantly ended (a wiring error, e.g. unset EQS query).
+	return Data.bSawAbilityActive ? EStateTreeRunStatus::Succeeded : EStateTreeRunStatus::Failed;
 }
 
 void FSTTask_ActivateAbilityByTag::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const

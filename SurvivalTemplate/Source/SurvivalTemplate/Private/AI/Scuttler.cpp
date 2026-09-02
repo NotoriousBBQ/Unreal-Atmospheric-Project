@@ -24,6 +24,10 @@ void AScuttler::BeginPlay()
 	{
 		Perception->OnTargetPerceptionUpdated.AddDynamic(this, &AScuttler::HandleTargetPerceptionUpdated);
 	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AScuttler: no UAIPerceptionComponent on the pawn; the possessing controller must call SetCanSeePlayer()."));
+	}
 	// Fallback: if perception lives on AI_Scuttler instead, that controller binds the
 	// delegate and calls SetCanSeePlayer() on this pawn.
 }

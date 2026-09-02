@@ -41,7 +41,7 @@
 | `Public/Light/LightRegistrySubsystem.h` / `Private/...cpp` | Tracks lights; `IsPointLit` query |
 | `Public/EQS/EnvQueryContext_Player.h` / `Private/...cpp` | EQS context → player pawn |
 | `Public/EQS/EnvQueryTest_DirectLight.h` / `Private/...cpp` | EQS test: filter/score by lit state |
-| `Public/AI/ScuttlerCharacter.h` / `Private/...cpp` | C++ base for `BP_Scuttler`: ASC + perception signal |
+| `Public/AI/Scuttler.h` / `Private/AI/Scuttler.cpp` (pre-existing, moved+rewritten) | C++ base for `BP_Scuttler`: ASC + perception signal |
 | `Public/AI/AbilityTask_MoveTo.h` / `Private/...cpp` | AbilityTask wrapping AIController navmesh MoveTo |
 | `Public/AI/GA_FleeToShadow.h` / `Private/...cpp` | GameplayAbility: run EQS, move to result |
 | `Public/AI/StateTreeCondition_CanSeePlayer.h` / `Private/...cpp` | StateTree condition reading the perception signal |
@@ -98,7 +98,7 @@ for p in ["/Game/Variant_Horror/Blueprints/BP_Scuttler", "/Game/Variant_Horror/B
 ```
 
 Record in a new `## Task 0 Findings` section at the bottom of this plan:
-- `BP_Scuttler` parent class (Task 6 reparents to `AScuttlerCharacter`; the current parent must be `Character` or a `Character` subclass — if it is a template FP character with logic worth keeping, note it).
+- `BP_Scuttler` parent class (Task 6 reparents to `AScuttler`; the current parent must be `Character` or a `Character` subclass — if it is a template FP character with logic worth keeping, note it).
 - Which actor has `AIPerceptionComponent` (`BP_Scuttler` or `AI_Scuttler`). Task 9 attaches the perception delegate on whichever owns it.
 - `BP_HorrorLight` component list and, if a `PointLight`/`SpotLight` component is present, its `AttenuationRadius` (seed for Task 13).
 
@@ -125,108 +125,100 @@ git commit -m "Record editor prerequisite findings for Scuttler flee behavior"
 
 ---
 
-## Task 1: C++ module scaffold
+## Task 1: C++ module dependencies
+
+> **Pre-existing state (verified 2026-09-02):** the editor's "New C++ Class" wizard has already generated the module. Present in the working tree (untracked `Source/`, plus a tracked modification to `SurvivalTemplate.uproject`):
+> - `Source/SurvivalTemplate.Target.cs` — `SurvivalTemplateTarget`, `Type = Game`, `DefaultBuildSettings = V7`, `ExtraModuleNames = { "SurvivalTemplate" }`. **Leave as-is.**
+> - `Source/SurvivalTemplateEditor.Target.cs` — editor equivalent. **Leave as-is.**
+> - `Source/SurvivalTemplate/SurvivalTemplate.Build.cs` — deps are only `Core, CoreUObject, Engine, InputCore`. **This is the file this task changes.**
+> - `Source/SurvivalTemplate/SurvivalTemplate.h` — `#include "CoreMinimal.h"` only. Step 2 moves it to `Public/`.
+> - `Source/SurvivalTemplate/SurvivalTemplate.cpp` — `IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, SurvivalTemplate, "SurvivalTemplate")`. Step 2 moves it to `Private/`.
+> - `Source/SurvivalTemplate/Scuttler.h` / `.cpp` — an empty `AScuttler : public ACharacter` (Tick/BeginPlay/SetupPlayerInputComponent stubs). Step 2 moves them to `Public/AI/` and `Private/AI/`; Task 6 then transforms them.
+> - `SurvivalTemplate.uproject` — already has a `"Modules"` array (`Name: SurvivalTemplate`, `Type: Runtime`, `LoadingPhase: Default`, `AdditionalDependencies: ["Engine"]`). **Leave as-is.**
+> - Project files (`.slnx`, `Intermediate/ProjectFiles/`, `.vsconfig`) already generated.
+
+> **Ruling (controller, 2026-09-02):** the wizard placed sources directly under `Source/SurvivalTemplate/`. That "no split" layout works only until `Public/` and `Private/` subdirectories appear — which Tasks 2–10 introduce — after which UBT stops adding the module root to the include path and root-level headers fail to resolve. Task 1 therefore moves the four existing files into the standard `Public/`/`Private/` split now, so every later task's `Public/…` / `Private/…` path and `#include "AI/Scuttler.h"`-style include is consistent. Cost if wrong: negligible — this is the conventional UE module layout.
 
 **Files:**
-- Create: `SurvivalTemplate/Source/SurvivalTemplate.Target.cs`
-- Create: `SurvivalTemplate/Source/SurvivalTemplateEditor.Target.cs`
-- Create: `SurvivalTemplate/Source/SurvivalTemplate/SurvivalTemplate.Build.cs`
-- Create: `SurvivalTemplate/Source/SurvivalTemplate/SurvivalTemplate.h`
-- Create: `SurvivalTemplate/Source/SurvivalTemplate/SurvivalTemplate.cpp`
-- Modify: `SurvivalTemplate/SurvivalTemplate.uproject`
+- Modify: `Source/SurvivalTemplate/SurvivalTemplate.Build.cs`
+- Move: `SurvivalTemplate.h` → `Public/SurvivalTemplate.h`; `SurvivalTemplate.cpp` → `Private/SurvivalTemplate.cpp`; `Scuttler.h` → `Public/AI/Scuttler.h`; `Scuttler.cpp` → `Private/AI/Scuttler.cpp`
 
 **Interfaces:**
-- Produces: a compiling primary game module named `SurvivalTemplate` with public deps `Core`, `CoreUObject`, `Engine`, `InputCore`, `AIModule`, `GameplayAbilities`, `GameplayTags`, `GameplayTasks`, `NavigationSystem`, `StateTreeModule`, `GameplayStateTreeModule`. All later tasks add files to this module.
+- Produces: the `SurvivalTemplate` primary game module compiling with public deps `Core`, `CoreUObject`, `Engine`, `InputCore`, `AIModule`, `NavigationSystem`, `GameplayAbilities`, `GameplayTags`, `GameplayTasks`, `StateTreeModule`, `GameplayStateTreeModule`, and — editor-only — `UnrealEd` (guarded by `Target.bBuildEditor`, for the automation test in Task 3). Standard `Public/`/`Private/` layout with `Public/AI/Scuttler.h` on the public include path. All later tasks add files to this module.
 
-- [ ] **Step 1: Write `SurvivalTemplate.Target.cs`**
+- [ ] **Step 1: Update `Build.cs` dependencies**
+
+Replace the body of the `SurvivalTemplate` constructor in `Source/SurvivalTemplate/SurvivalTemplate.Build.cs` with:
 
 ```csharp
-using UnrealBuildTool;
-using System.Collections.Generic;
+PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-public class SurvivalTemplateTarget : TargetRules
+PublicDependencyModuleNames.AddRange(new string[]
 {
-    public SurvivalTemplateTarget(TargetInfo Target) : base(Target)
-    {
-        Type = TargetType.Game;
-        DefaultBuildSettings = BuildSettingsVersion.V5;
-        IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
-        ExtraModuleNames.Add("SurvivalTemplate");
-    }
+    "Core", "CoreUObject", "Engine", "InputCore",
+    "AIModule", "NavigationSystem",
+    "GameplayAbilities", "GameplayTags", "GameplayTasks",
+    "StateTreeModule", "GameplayStateTreeModule"
+});
+
+PrivateDependencyModuleNames.AddRange(new string[] { });
+
+if (Target.bBuildEditor)
+{
+    // Editor-only: automation-test helpers used by Private/Tests/.
+    PrivateDependencyModuleNames.Add("UnrealEd");
 }
 ```
 
-- [ ] **Step 2: Write `SurvivalTemplateEditor.Target.cs`**
+Keep the file's existing `// Fill out your copyright notice...` header line and `using UnrealBuildTool;`.
 
-Same as Step 1 but class `SurvivalTemplateEditorTarget` and `Type = TargetType.Editor;`.
+- [ ] **Step 2: Move sources into the `Public/`/`Private/` split**
 
-- [ ] **Step 3: Write `SurvivalTemplate.Build.cs`**
-
-```csharp
-using UnrealBuildTool;
-
-public class SurvivalTemplate : ModuleRules
-{
-    public SurvivalTemplate(ReadOnlyTargetRules Target) : base(Target)
-    {
-        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-
-        PublicDependencyModuleNames.AddRange(new string[]
-        {
-            "Core", "CoreUObject", "Engine", "InputCore",
-            "AIModule", "NavigationSystem",
-            "GameplayAbilities", "GameplayTags", "GameplayTasks",
-            "StateTreeModule", "GameplayStateTreeModule"
-        });
-
-        PrivateDependencyModuleNames.AddRange(new string[] { });
-    }
-}
+```bash
+cd SurvivalTemplate/Source/SurvivalTemplate
+mkdir -p Public/AI Private/AI
+git mv --help >/dev/null 2>&1 || true   # files are untracked; use plain mv
+mv SurvivalTemplate.h  Public/SurvivalTemplate.h
+mv SurvivalTemplate.cpp Private/SurvivalTemplate.cpp
+mv Scuttler.h  Public/AI/Scuttler.h
+mv Scuttler.cpp Private/AI/Scuttler.cpp
 ```
 
-- [ ] **Step 4: Write the module header/impl**
+Then fix the includes that break:
+- `Private/SurvivalTemplate.cpp` — `#include "SurvivalTemplate.h"` still resolves (`Public/` is on the path). Leave it.
+- `Private/AI/Scuttler.cpp` — change `#include "Scuttler.h"` to `#include "AI/Scuttler.h"`.
 
-`SurvivalTemplate.h`:
-```cpp
-#pragma once
-#include "CoreMinimal.h"
+Leave `Scuttler.h` / `Scuttler.cpp` contents otherwise untouched — Task 6 rewrites them.
+
+- [ ] **Step 3: Build via command-line UBT**
+
+The Rider↔Unreal bridge is not required. From a shell:
+
+```bash
+"/c/Program Files/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat" \
+  SurvivalTemplateEditor Win64 Development \
+  -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" \
+  -waitmutex
 ```
 
-`SurvivalTemplate.cpp`:
-```cpp
-#include "SurvivalTemplate.h"
-#include "Modules/ModuleManager.h"
+(PowerShell: `& "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" SurvivalTemplateEditor Win64 Development -project="C:\Projects\CreepyAtmosphere\SurvivalTemplate\SurvivalTemplate.uproject" -waitmutex`)
 
-IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, SurvivalTemplate, "SurvivalTemplate");
+First build compiles the whole game module set and takes several minutes. Expected: `BUILD SUCCESSFUL`, and `SurvivalTemplate/Binaries/Win64/UnrealEditor-SurvivalTemplate.dll` exists (`Binaries/` is gitignored — that's fine, it's the build artifact).
+
+If the build fails because project files are stale after the `.Build.cs` change, regenerate first:
+```bash
+"/c/Program Files/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat" -projectfiles \
+  -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -game -engine
 ```
 
-- [ ] **Step 5: Add the module to the `.uproject`**
-
-Edit `SurvivalTemplate.uproject` — add a top-level `"Modules"` array before `"Plugins"`:
-```json
-"Modules": [
-    {
-        "Name": "SurvivalTemplate",
-        "Type": "Runtime",
-        "LoadingPhase": "Default"
-    }
-],
-```
-
-- [ ] **Step 6: Generate project files and build**
-
-From the repo, regenerate and build. Either:
-- Right-click `SurvivalTemplate.uproject` → "Generate Visual Studio project files", then in Rider build **Development Editor | Win64**; or
-- Bridge: `mcp__rider__build_solution_start` then poll `mcp__rider__build_solution_state`.
-
-Expected: build succeeds, `Binaries/Win64/UnrealEditor-SurvivalTemplate.dll` produced.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add SurvivalTemplate/Source SurvivalTemplate/SurvivalTemplate.uproject
-git commit -m "Add SurvivalTemplate C++ runtime module scaffold"
+git commit -m "Add SurvivalTemplate module dependencies for AI/GAS/EQS/StateTree"
 ```
+
+The commit includes the pre-existing untracked `Source/` scaffold (now in the `Public/`/`Private/` split) and the already-modified `.uproject` — they are part of this feature and were not previously committed. Append the Global Constraints commit trailer.
 
 ---
 
@@ -360,14 +352,16 @@ bool FLightRegistrySubsystemTest::RunTest(const FString& Parameters)
 
 - [ ] **Step 2: Run the test, verify it fails to compile / fails**
 
-In the running editor console (via `ue_execute_python` → `unreal.SystemLibrary.execute_console_command`) or Session Frontend:
-```python
-import unreal
-unreal.SystemLibrary.execute_console_command(
-    unreal.EditorLevelLibrary.get_editor_world(),
-    "Automation RunTests SurvivalTemplate.Light.IsPointLit")
+Try to build (Task 1 Step 3 command). Expected: **compile error** — `Light/LightRegistrySubsystem.h` and `Light/LightSourceComponent.h` do not exist yet. This is the red state; the test cannot run until Steps 3–4 create the headers.
+
+(Once the module compiles, the headless test-run command — used again in Step 6 — is:
+```bash
+"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
+  "C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" \
+  -ExecCmds="Automation RunTests SurvivalTemplate.Light.IsPointLit; Quit" \
+  -unattended -nopause -nosplash -nullrhi -log -abslog="C:/Projects/CreepyAtmosphere/.superpowers/sdd/2026-09-02-scuttler-flee-to-shadow/task3-automation.log"
 ```
-Expected: build error (`LightRegistrySubsystem.h` not found) — the header doesn't exist yet. This is the red state.
+Then read that log for `LogAutomationController` lines. No running editor / Rider bridge needed.)
 
 - [ ] **Step 3: Write `LightSourceComponent`**
 
@@ -545,19 +539,15 @@ ULightRegistrySubsystem* ULightRegistrySubsystem::Get(const UObject* WorldContex
 
 - [ ] **Step 5: Build**
 
-Bridge build. Expected: success.
+Build via command-line UBT (see Task 1 Step 3). Expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 6: Run the test, verify it passes**
 
-```python
-import unreal
-unreal.SystemLibrary.execute_console_command(
-    unreal.EditorLevelLibrary.get_editor_world(),
-    "Automation RunTests SurvivalTemplate.Light.IsPointLit")
-```
-Then `ue_get_logs` filtered to category `LogAutomationController` / pattern `IsPointLit`. Expected: `....Test Completed. Result={Success}` and `1 test(s) ... Passed`.
+Run the headless automation command from Step 2, then read
+`.superpowers/sdd/2026-09-02-scuttler-flee-to-shadow/task3-automation.log`.
+Expected: `LogAutomationController: ... Test Completed. Result={Success}` and a summary line `... 1 ... Passed, 0 ... Failed`. Exit code 0 on all-pass.
 
-If the "blocked point" assertion is flaky because the cube mesh/collision didn't load in the test world, replace the wall with a programmatic box: spawn an `AActor`, add a `UBoxComponent` with `SetCollisionEnabled(QueryAndPhysics)` and `SetBoxExtent`, positioned between the point and light. Keep the assertion.
+If the "blocked point" assertion is flaky because the cube mesh/collision didn't load in the `-nullrhi` test world, replace the wall with a programmatic box: spawn an `AActor`, add a `UBoxComponent` with `SetCollisionEnabled(QueryAndPhysics)` and `SetBoxExtent`, positioned between the point and light. Keep the assertion.
 
 - [ ] **Step 7: Commit**
 
@@ -613,7 +603,7 @@ void UEnvQueryContext_Player::ProvideContext(FEnvQueryInstance& QueryInstance, F
 }
 ```
 
-- [ ] **Step 3: Build.** Bridge build; expected success.
+- [ ] **Step 3: Build.** Command-line UBT: `Build.bat SurvivalTemplateEditor Win64 Development -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -waitmutex`. Expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 4: Smoke-check registration**
 
@@ -731,7 +721,7 @@ FText UEnvQueryTest_DirectLight::GetDescriptionDetails() const
 
 Note: verify `FEnvQueryInstance::ItemIterator`, `GetItemLocation`, and `It.SetScore(...)` signatures against `EnvironmentQuery/EnvQueryTest.h` in the 5.8 install — the `SetScore` overload that takes `(EEnvTestPurpose, EEnvTestFilterType, bool, bool)` is the bool path. If `GetItemLocation` is protected and takes only the instance+index, that matches; otherwise use `GetItemLocation(QueryInstance, It.GetIndex())` as written.
 
-- [ ] **Step 3: Build.** Bridge build; expected success.
+- [ ] **Step 3: Build.** Command-line UBT: `Build.bat SurvivalTemplateEditor Win64 Development -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -waitmutex`. Expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 4: Smoke-check the test appears in EQS**
 
@@ -753,37 +743,43 @@ git commit -m "Add Direct Light EQS test"
 
 ## Task 6: Scuttler C++ base with ASC
 
+> **Pre-existing:** `Public/AI/Scuttler.h` / `Private/AI/Scuttler.cpp` (moved there by Task 1 from the wizard's root-level `Scuttler.h`/`.cpp`) contain an empty `AScuttler : public ACharacter` with `Tick`, `BeginPlay`, and `SetupPlayerInputComponent` stubs. This task **rewrites those two files in place** — it does not create new ones. Keep the `// Fill out your copyright notice...` header. The class name stays `AScuttler` (script path `/Script/SurvivalTemplate.Scuttler`).
+>
+> **Ruling (controller, 2026-09-02):** the plan originally named this class `AScuttlerCharacter`; reusing the existing `AScuttler` instead avoids two near-identical classes and dead code. Task 0 must confirm whether `BP_Scuttler` is already reparented to `AScuttler` — if so, Task 12's reparent is a no-op; if not, Task 12 reparents to `AScuttler` as written. Cost if wrong: if some other asset already depends on `AScuttler` as a plain character, adding an ASC + `IAbilitySystemInterface` to it is still backward-compatible, so the risk is low.
+
 **Files:**
-- Create: `Public/AI/ScuttlerCharacter.h`, `Private/AI/ScuttlerCharacter.cpp`
+- Modify: `Source/SurvivalTemplate/Public/AI/Scuttler.h`, `Source/SurvivalTemplate/Private/AI/Scuttler.cpp` (existing, from Task 1)
 
 **Interfaces:**
 - Consumes: Task 0 finding (current `BP_Scuttler` parent, perception owner).
 - Produces:
-  - `class SURVIVALTEMPLATE_API AScuttlerCharacter : public ACharacter, public IAbilitySystemInterface`
+  - `class SURVIVALTEMPLATE_API AScuttler : public ACharacter, public IAbilitySystemInterface`
   - `virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;`
   - `UPROPERTY(EditDefaultsOnly, Category="Abilities") TArray<TSubclassOf<UGameplayAbility>> DefaultAbilities;`
   - `UFUNCTION(BlueprintPure, Category="AI") bool CanSeePlayer() const;` and `UPROPERTY(BlueprintReadOnly) bool bCanSeePlayer;` — the perception signal (populated in Task 9).
   - protected `UPROPERTY() TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;`
 - Consumed by Task 8 (avatar cast), Task 9 (adds perception delegate), Task 10 (`GetAbilitySystemComponent`), Task 12 (reparent target).
 
-- [ ] **Step 1: Write the header**
+- [ ] **Step 1: Rewrite the header**
+
+Replace the contents of `Source/SurvivalTemplate/Public/AI/Scuttler.h` (keeping the copyright header line) with:
 
 ```cpp
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
-#include "ScuttlerCharacter.generated.h"
+#include "Scuttler.generated.h"
 
 class UAbilitySystemComponent;
 class UGameplayAbility;
 
 UCLASS()
-class SURVIVALTEMPLATE_API AScuttlerCharacter : public ACharacter, public IAbilitySystemInterface
+class SURVIVALTEMPLATE_API AScuttler : public ACharacter, public IAbilitySystemInterface
 {
     GENERATED_BODY()
 public:
-    AScuttlerCharacter();
+    AScuttler();
 
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return AbilitySystemComponent; }
     virtual void PossessedBy(AController* NewController) override;
@@ -808,21 +804,25 @@ private:
 };
 ```
 
-- [ ] **Step 2: Write the impl**
+The stubbed `Tick` / `BeginPlay` / `SetupPlayerInputComponent` overrides from the wizard boilerplate are dropped here (nothing uses them). Task 9 re-adds a `BeginPlay` override.
+
+- [ ] **Step 2: Rewrite the impl**
+
+Replace the contents of `Source/SurvivalTemplate/Private/AI/Scuttler.cpp` (keeping the copyright header line) with:
 
 ```cpp
-#include "AI/ScuttlerCharacter.h"
+#include "AI/Scuttler.h"
 #include "AbilitySystemComponent.h"
 #include "Abilities/GameplayAbility.h"
 
-AScuttlerCharacter::AScuttlerCharacter()
+AScuttler::AScuttler()
 {
     AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
     AbilitySystemComponent->SetIsReplicated(true);
     AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 }
 
-void AScuttlerCharacter::PossessedBy(AController* NewController)
+void AScuttler::PossessedBy(AController* NewController)
 {
     Super::PossessedBy(NewController);
     if (AbilitySystemComponent)
@@ -832,7 +832,7 @@ void AScuttlerCharacter::PossessedBy(AController* NewController)
     }
 }
 
-void AScuttlerCharacter::GrantDefaultAbilities()
+void AScuttler::GrantDefaultAbilities()
 {
     if (bAbilitiesGranted || !HasAuthority() || !AbilitySystemComponent) { return; }
     for (const TSubclassOf<UGameplayAbility>& Ability : DefaultAbilities)
@@ -846,13 +846,13 @@ void AScuttlerCharacter::GrantDefaultAbilities()
 }
 ```
 
-- [ ] **Step 3: Build.** Bridge build; expected success.
+- [ ] **Step 3: Build.** Command-line UBT (`Build.bat SurvivalTemplateEditor Win64 Development -project=... -waitmutex`); expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add Source/SurvivalTemplate/Public/AI/ScuttlerCharacter.h Source/SurvivalTemplate/Private/AI/ScuttlerCharacter.cpp
-git commit -m "Add AScuttlerCharacter base with ability system component"
+git add Source/SurvivalTemplate/Public/AI/Scuttler.h Source/SurvivalTemplate/Private/AI/Scuttler.cpp
+git commit -m "Add ability system component to AScuttler base"
 ```
 
 ---
@@ -1001,7 +1001,7 @@ void UAbilityTask_MoveTo::OnDestroy(bool bInOwnerFinished)
 }
 ```
 
-- [ ] **Step 3: Build.** Bridge build; expected success. Confirm `AAIController::ReceiveMoveCompleted` is a `DYNAMIC` multicast (bindable with `AddDynamic`) in the 5.8 header `AIController.h`; if it is a non-dynamic `FAIMoveCompletedSignature`, bind with `FScriptDelegate` / a lambda via `AI->GetPathFollowingComponent()->OnRequestFinished` instead and keep the same `Finish` semantics.
+- [ ] **Step 3: Build.** Command-line UBT: `Build.bat SurvivalTemplateEditor Win64 Development -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -waitmutex`. Expected `BUILD SUCCESSFUL`. Confirm `AAIController::ReceiveMoveCompleted` is a `DYNAMIC` multicast (bindable with `AddDynamic`) in the 5.8 header `AIController.h`; if it is a non-dynamic `FAIMoveCompletedSignature`, bind with `FScriptDelegate` / a lambda via `AI->GetPathFollowingComponent()->OnRequestFinished` instead and keep the same `Finish` semantics.
 
 - [ ] **Step 4: Commit**
 
@@ -1125,7 +1125,7 @@ void UGA_FleeToShadow::OnMoveFinished(bool /*bSuccess*/)
 
 Verify `FEnvQueryRequest::Execute(EEnvQueryRunMode::Type, UObject*, TMethodPtr)` exists in `EnvQueryManager.h` for 5.8 (it has historically). If only the `FQueryFinishedSignature` delegate overload exists, build the delegate with `FQueryFinishedSignature::CreateUObject(this, &UGA_FleeToShadow::OnQueryFinished)` and pass it.
 
-- [ ] **Step 3: Build.** Bridge build; expected success.
+- [ ] **Step 3: Build.** Command-line UBT: `Build.bat SurvivalTemplateEditor Win64 Development -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -waitmutex`. Expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 4: Commit**
 
@@ -1139,23 +1139,30 @@ git commit -m "Add FleeToShadow gameplay ability"
 ## Task 9: Perception signal + StateTree condition
 
 **Files:**
-- Modify: `Public/AI/ScuttlerCharacter.h`, `Private/AI/ScuttlerCharacter.cpp`
-- Create: `Public/AI/StateTreeCondition_CanSeePlayer.h`, `Private/AI/StateTreeCondition_CanSeePlayer.cpp`
+- Modify: `Source/SurvivalTemplate/Public/AI/Scuttler.h`, `Source/SurvivalTemplate/Private/AI/Scuttler.cpp`
+- Create: `Source/SurvivalTemplate/Public/AI/StateTreeCondition_CanSeePlayer.h`, `Source/SurvivalTemplate/Private/AI/StateTreeCondition_CanSeePlayer.cpp`
 
 **Interfaces:**
-- Consumes: Task 0 finding (perception component owner), `AScuttlerCharacter` (Task 6).
+- Consumes: Task 0 finding (perception component owner), `AScuttler` (Task 6).
 - Produces:
-  - `AScuttlerCharacter` now binds `UAIPerceptionComponent::OnTargetPerceptionUpdated` and maintains `bCanSeePlayer` + `UPROPERTY() TObjectPtr<AActor> SeenPlayer;` + `float LastSeenTime;`.
+  - `AScuttler` now binds `UAIPerceptionComponent::OnTargetPerceptionUpdated` and maintains `bCanSeePlayer` + `UPROPERTY() TObjectPtr<AActor> SeenPlayer;` + `float LastSeenTime;`.
   - `USTRUCT() struct FStateTreeCondition_CanSeePlayerInstanceData { UPROPERTY(EditAnywhere) bool bInvert = false; };`
   - `USTRUCT(meta=(DisplayName="Scuttler Can See Player")) struct SURVIVALTEMPLATE_API FStateTreeCondition_CanSeePlayer : public FStateTreeConditionCommonBase` with `using FInstanceDataType = FStateTreeCondition_CanSeePlayerInstanceData;` and `virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;`.
 - Consumed by Task 14.
 
-- [ ] **Step 1: Add perception handling to `AScuttlerCharacter`**
+- [ ] **Step 1: Add perception handling to `AScuttler`**
+
+> **Ruling (controller, 2026-09-02):** Task 0 has not run, so the perception-component owner (`BP_Scuttler` pawn vs. `AI_Scuttler` controller) is unknown. Implement the pawn-side binding as the primary path **and** add a public `SetCanSeePlayer(bool)` so a controller-side binding can push the signal later without another code change. Cost if wrong: if perception is on the controller, the pawn's `FindComponentByClass` returns null and the delegate never binds — the Phase-5 integration test catches it and the setter is the ready fix.
 
 Header — add:
 ```cpp
 public:
     virtual void BeginPlay() override;
+
+    /** Pushed by whichever actor owns the AIPerception delegate (pawn or controller). */
+    UFUNCTION(BlueprintCallable, Category="AI")
+    void SetCanSeePlayer(bool bNewValue, AActor* InSeenPlayer = nullptr);
+
 protected:
     UPROPERTY() TObjectPtr<AActor> SeenPlayer = nullptr;
     float LastSeenTime = 0.f;
@@ -1171,29 +1178,32 @@ Impl — add:
 #include "Perception/AISense_Sight.h"
 #include "Kismet/GameplayStatics.h"
 
-void AScuttlerCharacter::BeginPlay()
+void AScuttler::BeginPlay()
 {
     Super::BeginPlay();
-    // Task 0 finding: perception component lives on <this pawn | AI controller>.
-    // If on the pawn:
+    // Primary path: perception component on this pawn.
     if (UAIPerceptionComponent* Perc = FindComponentByClass<UAIPerceptionComponent>())
     {
-        Perc->OnTargetPerceptionUpdated.AddDynamic(this, &AScuttlerCharacter::HandleTargetPerceptionUpdated);
+        Perc->OnTargetPerceptionUpdated.AddDynamic(this, &AScuttler::HandleTargetPerceptionUpdated);
     }
-    // If Task 0 found it on AI_Scuttler instead, bind there in the controller BP/C++
-    // and have it call a setter on this pawn; note the deviation in the commit.
+    // Fallback: if Task 0 finds perception on AI_Scuttler, that controller binds the
+    // delegate and calls SetCanSeePlayer() on this pawn instead. Note any deviation in the commit.
 }
 
-void AScuttlerCharacter::HandleTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
+void AScuttler::HandleTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
     APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
     if (Actor != PlayerPawn) { return; }
     if (Stimulus.Type != UAISense::GetSenseID<UAISense_Sight>()) { return; }
+    SetCanSeePlayer(Stimulus.WasSuccessfullySensed(), Actor);
+}
 
-    bCanSeePlayer = Stimulus.WasSuccessfullySensed();
+void AScuttler::SetCanSeePlayer(bool bNewValue, AActor* InSeenPlayer)
+{
+    bCanSeePlayer = bNewValue;
     if (bCanSeePlayer)
     {
-        SeenPlayer = Actor;
+        if (InSeenPlayer) { SeenPlayer = InSeenPlayer; }
         LastSeenTime = GetWorld()->GetTimeSeconds();
     }
 }
@@ -1231,7 +1241,7 @@ struct SURVIVALTEMPLATE_API FStateTreeCondition_CanSeePlayer : public FStateTree
 `StateTreeCondition_CanSeePlayer.cpp`:
 ```cpp
 #include "AI/StateTreeCondition_CanSeePlayer.h"
-#include "AI/ScuttlerCharacter.h"
+#include "AI/Scuttler.h"
 #include "StateTreeExecutionContext.h"
 #include "AIController.h"
 #include "GameFramework/Pawn.h"
@@ -1240,12 +1250,12 @@ bool FStateTreeCondition_CanSeePlayer::TestCondition(FStateTreeExecutionContext&
 {
     const FInstanceDataType& Data = Context.GetInstanceData(*this);
 
-    AScuttlerCharacter* Scuttler = Cast<AScuttlerCharacter>(Context.GetOwner());
+    AScuttler* Scuttler = Cast<AScuttler>(Context.GetOwner());
     if (!Scuttler)
     {
         if (AAIController* AI = Cast<AAIController>(Context.GetOwner()))
         {
-            Scuttler = Cast<AScuttlerCharacter>(AI->GetPawn());
+            Scuttler = Cast<AScuttler>(AI->GetPawn());
         }
     }
     const bool bSees = Scuttler && Scuttler->CanSeePlayer();
@@ -1253,9 +1263,9 @@ bool FStateTreeCondition_CanSeePlayer::TestCondition(FStateTreeExecutionContext&
 }
 ```
 
-Verify against the 5.8 StateTree headers: base struct name (`FStateTreeConditionCommonBase` vs `FStateTreeConditionBase`), whether `GetInstanceDataType()` is still required or replaced by the `FInstanceDataType` typedef + `IMPLEMENT` macro, and `Context.GetOwner()` (may be `GetOwner()` returning `UObject*`, needing `Cast<AActor>` first). Adjust to match; keep the "resolve `AScuttlerCharacter` from owner-or-its-pawn, return `CanSeePlayer()`" logic.
+Verify against the 5.8 StateTree headers: base struct name (`FStateTreeConditionCommonBase` vs `FStateTreeConditionBase`), whether `GetInstanceDataType()` is still required or replaced by the `FInstanceDataType` typedef + `IMPLEMENT` macro, and `Context.GetOwner()` (may be `GetOwner()` returning `UObject*`, needing `Cast<AActor>` first). Adjust to match; keep the "resolve `AScuttler` from owner-or-its-pawn, return `CanSeePlayer()`" logic.
 
-- [ ] **Step 3: Build.** Bridge build; expected success.
+- [ ] **Step 3: Build.** Command-line UBT: `Build.bat SurvivalTemplateEditor Win64 Development -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -waitmutex`. Expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 4: Verify the condition appears in StateTree**
 
@@ -1418,7 +1428,7 @@ void FSTTask_ActivateAbilityByTag::ExitState(FStateTreeExecutionContext& Context
 
 Verify: capturing `Data` by reference in the lambda is safe only if the instance data outlives the delegate binding — it does, because `ExitState` removes the handle. If the 5.8 StateTree recreates instance data between ticks, store `bAbilityEnded` on the ASC via a `UPROPERTY` proxy instead; simplest robust alternative is to poll in `Tick`: `return ASC->GetAnimatingAbility()`… no — poll `!ASC->FindAbilitySpecFromClass(...)` active state, or check `ASC->GetActivatableAbilities()` for an active spec whose ability has the tag. Pick whichever matches the engine's instance-data lifetime; keep "Succeeded when the tagged ability is no longer active."
 
-- [ ] **Step 3: Build.** Bridge build; expected success.
+- [ ] **Step 3: Build.** Command-line UBT: `Build.bat SurvivalTemplateEditor Win64 Development -project="C:/Projects/CreepyAtmosphere/SurvivalTemplate/SurvivalTemplate.uproject" -waitmutex`. Expected `BUILD SUCCESSFUL`.
 
 - [ ] **Step 4: Verify the task appears in StateTree**
 
@@ -1495,8 +1505,8 @@ git commit -m "Add EQS_FleeToShadow query"
 - Modify (editor): `/Game/Variant_Horror/Blueprints/BP_Scuttler.uasset`
 
 **Interfaces:**
-- Consumes: `AScuttlerCharacter` (Task 6), `UGA_FleeToShadow` (Task 8), `EQS_FleeToShadow` (Task 11), Task 0 finding (current parent + any logic to preserve).
-- Produces: `BP_Scuttler` reparented to `AScuttlerCharacter` with `DefaultAbilities = [GA_Scuttler_FleeToShadow]`.
+- Consumes: `AScuttler` (Task 6), `UGA_FleeToShadow` (Task 8), `EQS_FleeToShadow` (Task 11), Task 0 finding (current parent + any logic to preserve).
+- Produces: `BP_Scuttler` reparented to `AScuttler` with `DefaultAbilities = [GA_Scuttler_FleeToShadow]`.
 
 - [ ] **Step 1: Create `GA_Scuttler_FleeToShadow`**
 
@@ -1515,11 +1525,11 @@ Verify `FleeQuery` shows the asset in the ability's Class Defaults.
 
 - [ ] **Step 2: Reparent `BP_Scuttler`**
 
-Preferred in-editor: File → Reparent Blueprint → `AScuttlerCharacter`. Via bridge:
+Preferred in-editor: File → Reparent Blueprint → `AScuttler`. Via bridge:
 ```python
 import unreal
 bp = unreal.load_asset("/Game/Variant_Horror/Blueprints/BP_Scuttler")
-unreal.BlueprintEditorLibrary.reparent_blueprint(bp, unreal.load_class(None, "/Script/SurvivalTemplate.AScuttlerCharacter"))
+unreal.BlueprintEditorLibrary.reparent_blueprint(bp, unreal.load_class(None, "/Script/SurvivalTemplate.AScuttler"))
 unreal.EditorAssetLibrary.save_asset(bp.get_path_name())
 ```
 If Task 0 found the old parent carried event-graph logic (movement, mesh setup), that logic stays in `BP_Scuttler`'s graph and still runs — only the native base changes. Recompile the Blueprint; fix any nodes that referenced removed parent functions (note them in the commit).
@@ -1541,7 +1551,7 @@ unreal.EditorAssetLibrary.save_asset(bp.get_path_name())
 ```python
 import unreal
 w = unreal.EditorLevelLibrary.get_editor_world()  # or PIE world
-scuttlers = unreal.GameplayStatics.get_all_actors_of_class(w, unreal.load_class(None, "/Script/SurvivalTemplate.ScuttlerCharacter"))
+scuttlers = unreal.GameplayStatics.get_all_actors_of_class(w, unreal.load_class(None, "/Script/SurvivalTemplate.Scuttler"))
 print("scuttlers:", len(scuttlers))
 ```
 Then `ue_get_logs` — no ASC/ability warnings on possession. Stop PIE.
@@ -1550,7 +1560,7 @@ Then `ue_get_logs` — no ASC/ability warnings on possession. Stop PIE.
 
 ```bash
 git add SurvivalTemplate/Content/Variant_Horror/AI/GA_Scuttler_FleeToShadow.uasset SurvivalTemplate/Content/Variant_Horror/Blueprints/BP_Scuttler.uasset
-git commit -m "Reparent BP_Scuttler to AScuttlerCharacter and grant flee ability"
+git commit -m "Reparent BP_Scuttler to AScuttler and grant flee ability"
 ```
 
 ---
@@ -1765,7 +1775,7 @@ Expected: still passes. Nothing to commit if green.
 | `UEnvQueryContext_Player` | 4, 11 |
 | `UEnvQueryTest_DirectLight` | 5, 11 |
 | `EQS_FleeToShadow` query + tests | 11 |
-| `AScuttlerCharacter` + ASC + `PossessedBy` grant | 6, 12 |
+| `AScuttler` + ASC + `PossessedBy` grant | 6, 12 |
 | `UGA_FleeToShadow` | 8, 12 |
 | `UAbilityTask_MoveTo` | 7 |
 | `GA_Scuttler_FleeToShadow` BP subclass | 12 |

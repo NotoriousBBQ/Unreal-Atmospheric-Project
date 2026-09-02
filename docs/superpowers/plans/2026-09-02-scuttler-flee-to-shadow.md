@@ -1801,4 +1801,28 @@ No gaps.
 
 ## Task 0 Findings
 
-_(filled in during Task 0)_
+_Gathered 2026-09-02 via the Rider↔Unreal bridge (`ue_execute_python`) against the live editor._
+
+### BP_Scuttler (`/Game/Variant_Horror/Blueprints/BP_Scuttler`)
+- **Parent class:** `/Script/Engine.Character` (plain `ACharacter`). Task 12's reparent to `AScuttler` is required (not a no-op) and is safe — `AScuttler` is an `ACharacter` subclass.
+- **Event graph logic to preserve:** none. `EventGraph` contains only the three default **disabled** stub events (`ReceiveBeginPlay`, `ReceiveActorBeginOverlap`, `ReceiveTick`), each marked "This node is disabled and will not be called." `UserConstructionScript` is empty. No custom member variables, no custom functions. Reparenting carries no risk of losing graph work.
+- **Components (SCS):** `CollisionCylinder` (CapsuleComponent, root), `Arrow` (ArrowComponent), `CharacterMesh0` (SkeletalMeshComponent), **`StateTreeAI_GEN_VARIABLE` (StateTreeAIComponent)**, **`AIPerception_GEN_VARIABLE` (AIPerceptionComponent)**, `CharMoveComp` (CharacterMovementComponent).
+- **The `UAIPerceptionComponent` is on the pawn (`BP_Scuttler`), not the controller.** → Task 9's primary pawn-side `BeginPlay` binding (`FindComponentByClass<UAIPerceptionComponent>()`) is the correct path; the controller-side `SetCanSeePlayer` fallback is not needed.
+- **The `StateTreeAIComponent` is on the pawn.** It runs `ST_Scuttler`. The StateTree execution context owner is the pawn/its AIController — Task 14's condition/task node `ResolveASC`/owner-or-pawn logic covers both.
+
+### AI_Scuttler (`/Game/Variant_Horror/Blueprints/AI_Scuttler`)
+- **Parent class:** `AIController`.
+- **Components:** `TransformComponent0` (SceneComponent), `PathFollowingComponent`. No perception component here (confirms perception lives on the pawn).
+
+### BP_HorrorLight (`/Game/Variant_Horror/Blueprints/Light/BP_HorrorLight`)
+- **Parent class:** `Actor`.
+- **Light component:** `SpotLight_GEN_VARIABLE` — a **`USpotLightComponent`**, `AttenuationRadius = 566.5`, `Intensity = 1.0`. Also present: 2× `Cylinder`/`Cylinder1` StaticMeshComponents (the fixture mesh), `NS_DustMote` NiagaraComponent, `Scene` SceneComponent.
+- **Seed for Task 13:** set `ULightSourceComponent.Radius` to **~566** (round of the attenuation radius).
+
+### Lvl_Horror navmesh
+- `NavMeshBoundsVolume` count: **1**. `RecastNavMesh` count: **1**.
+- **Task 15 is a no-op — skip it entirely (no commit).** The level already has nav bounds and a built navmesh.
+
+### Tooling constraints discovered
+- StateTree assets expose almost no Python API in 5.8 (`Schema` is protected; no state/transition accessors). **Task 14 must be done by hand in the StateTree editor**; the bridge can only verify the C++ nodes are registered and re-check behavior in PIE.
+- EQS graph editing via Python is unavailable. **Task 11 must be done by hand in the EQS editor** (bridge can create the empty asset shell).

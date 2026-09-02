@@ -6,6 +6,8 @@
 #include "EnvironmentQuery/EnvQuery.h"
 #include "EnvironmentQuery/EnvQueryManager.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogScuttler, Log, All);
+
 UGA_FleeToShadow::UGA_FleeToShadow()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
@@ -37,6 +39,9 @@ void UGA_FleeToShadow::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 
+	UE_LOG(LogScuttler, Log, TEXT("FleeToShadow activated (avatar=%s, query=%s)"),
+		*Avatar->GetName(), *FleeQuery->GetName());
+
 	FEnvQueryRequest Request(FleeQuery, Avatar);
 	PendingQueryID = Request.Execute(EEnvQueryRunMode::SingleResult, this, &UGA_FleeToShadow::OnQueryFinished);
 }
@@ -60,18 +65,20 @@ void UGA_FleeToShadow::OnQueryFinished(TSharedPtr<FEnvQueryResult> Result)
 	const bool bOk = Result.IsValid() && Result->IsSuccessful() && Result->Items.Num() > 0;
 	if (!bOk)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("GA_FleeToShadow: no viable hiding spot; ending."));
+		UE_LOG(LogScuttler, Warning, TEXT("query finished, no viable hiding spot; ending."));
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		return;
 	}
 
 	const FVector Dest = Result->GetItemAsLocation(0);
+	UE_LOG(LogScuttler, Log, TEXT("query finished, %d items, chosen=%s"), Result->Items.Num(), *Dest.ToString());
 	UAbilityTask_MoveTo* MoveTask = UAbilityTask_MoveTo::MoveTo(this, Dest, AcceptanceRadius);
 	MoveTask->OnFinished.AddDynamic(this, &UGA_FleeToShadow::OnMoveFinished);
 	MoveTask->ReadyForActivation();
 }
 
-void UGA_FleeToShadow::OnMoveFinished(bool /*bSuccess*/)
+void UGA_FleeToShadow::OnMoveFinished(bool bSuccess)
 {
+	UE_LOG(LogScuttler, Log, TEXT("move finished (%s)"), bSuccess ? TEXT("success") : TEXT("failed/partial"));
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }

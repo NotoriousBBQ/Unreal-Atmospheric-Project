@@ -11,7 +11,12 @@
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/ST_Scuttler.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/AI_Scuttler.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/B/MN/E3OT6OC50M32OFC6ATI0UZ.uasset",
-				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/B/IA/4JSDV03S3R1IM0L11PDLJ1.uasset"
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/B/IA/4JSDV03S3R1IM0L11PDLJ1.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/AI/EQS_FleeToShadow.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/AI/GA_Scuttler_FleeToShadow.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/Light/BP_HorrorLight.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/AIC_Scuttler.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Temp.umap"
 			]
 		}
 	]

@@ -4,26 +4,38 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
 #include "Scuttler.generated.h"
 
+class UAbilitySystemComponent;
+class UGameplayAbility;
+
 UCLASS()
-class SURVIVALTEMPLATE_API AScuttler : public ACharacter
+class SURVIVALTEMPLATE_API AScuttler : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
 	AScuttler();
 
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return AbilitySystemComponent; }
+	virtual void PossessedBy(AController* NewController) override;
+
+	UFUNCTION(BlueprintPure, Category="AI")
+	bool CanSeePlayer() const { return bCanSeePlayer; }
+
 protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+	UPROPERTY(VisibleAnywhere, Category="Abilities")
+	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+	UPROPERTY(EditDefaultsOnly, Category="Abilities")
+	TArray<TSubclassOf<UGameplayAbility>> DefaultAbilities;
 
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	UPROPERTY(BlueprintReadOnly, Category="AI")
+	bool bCanSeePlayer = false;
 
+	void GrantDefaultAbilities();
+
+private:
+	bool bAbilitiesGranted = false;
 };

@@ -2,33 +2,40 @@
 
 
 #include "AI/Scuttler.h"
+#include "AbilitySystemComponent.h"
+#include "Abilities/GameplayAbility.h"
 
-// Sets default values
 AScuttler::AScuttler()
 {
- 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
-
+	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 }
 
-// Called when the game starts or when spawned
-void AScuttler::BeginPlay()
+void AScuttler::PossessedBy(AController* NewController)
 {
-	Super::BeginPlay();
-	
+	Super::PossessedBy(NewController);
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->InitAbilityActorInfo(this, this);
+		GrantDefaultAbilities();
+	}
 }
 
-// Called every frame
-void AScuttler::Tick(float DeltaTime)
+void AScuttler::GrantDefaultAbilities()
 {
-	Super::Tick(DeltaTime);
+	if (bAbilitiesGranted || !HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
 
+	for (const TSubclassOf<UGameplayAbility>& Ability : DefaultAbilities)
+	{
+		if (Ability)
+		{
+			AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(Ability, 1, INDEX_NONE, this));
+		}
+	}
+
+	bAbilitiesGranted = true;
 }
-
-// Called to bind functionality to input
-void AScuttler::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-}
-

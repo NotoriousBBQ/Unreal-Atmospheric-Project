@@ -1826,3 +1826,19 @@ _Gathered 2026-09-02 via the Rider↔Unreal bridge (`ue_execute_python`) against
 ### Tooling constraints discovered
 - StateTree assets expose almost no Python API in 5.8 (`Schema` is protected; no state/transition accessors). **Task 14 must be done by hand in the StateTree editor**; the bridge can only verify the C++ nodes are registered and re-check behavior in PIE.
 - EQS graph editing via Python is unavailable. **Task 11 must be done by hand in the EQS editor** (bridge can create the empty asset shell).
+
+### Pre-existing issue: ST_Scuttler is not running
+- PIE logs on the current `Lvl_Horror` Scuttler show:
+  `LogStateTree: Error: UStateTreeComponentSchema::SetContextRequirements: Missing external data requirements. StateTree will not update.`
+  followed by `Context Requirements in UStateTreeComponent::StartTree failed. Component tick is disabled.`
+- **This predates the entire feature branch** — the same error appears 8× in the stale committed
+  `Saved/Logs/SurvivalTemplate.log` from commit `54668d0` ("updating .gitignore"), long before any
+  C++ was added. `ST_Scuttler.uasset` has not been touched since the initial project import.
+  The reparent of `BP_Scuttler` did **not** cause it (the `StateTreeReference` asset path is present
+  in both the pre-reparent and post-reparent `.uasset`, and `AScuttler` is still an `ACharacter`).
+- **Implication for Task 14:** the "add a `Fleeing` state above the existing idle/patrol states"
+  wording assumes a working tree. In fact `ST_Scuttler` currently has unmet schema context
+  requirements and never ticks. Task 14 must **first** make the tree valid (satisfy the
+  `UStateTreeAIComponentSchema` context — typically set the schema to `StateTreeAIComponentSchema`
+  and ensure the AIController/Actor context is bound) before the flee behavior can be observed.
+  Budget extra editor time for this; it is the reason the Scuttler AI has not been seen working yet.

@@ -46,8 +46,16 @@ Commit: `git add SurvivalTemplate/Content/Variant_Horror/AI/EQS_FleeToShadow.uas
 
 ## Task 14 — Wire `ST_Scuttler`
 
-Open `/Game/Variant_Horror/Blueprints/ST_Scuttler`. (It compiles clean today and is run by the
-`StateTreeAIComponent` on `BP_Scuttler`.)
+Open `/Game/Variant_Horror/Blueprints/ST_Scuttler`.
+
+> **Fix the pre-existing breakage first.** In PIE the Scuttler's StateTree currently errors with
+> `UStateTreeComponentSchema::SetContextRequirements: Missing external data requirements. StateTree
+> will not update.` and its component tick is disabled. This is **not** from the reparent — it is in
+> the stale committed log from before this branch; `ST_Scuttler` has never run. Before adding the
+> `Fleeing` state, make the tree valid: check the ST's **Schema** (should be
+> `StateTreeAIComponentSchema` so the AIController/Pawn context is provided to conditions/tasks),
+> and resolve any unbound context parameters the schema reports. Verify in PIE that the tree ticks
+> (no `StartTree failed` error) before proceeding.
 
 1. Add a state **`Fleeing`** as a child of the root selector, ordered **above** the existing
    idle/patrol state(s) so it wins selection.

@@ -1,46 +1,46 @@
 # Scuttler Flee-to-Shadow — remaining in-editor work
 
-The C++ (Tasks 1–10) and the bridge-scriptable editor wiring (Tasks 0, 12, 13, and the
-Task 16 `LogScuttler` trace) are committed. Three pieces are left, and all three need hands
-in the Unreal Editor because UE 5.8 exposes no reliable Python API for EQS graphs or
-StateTree assets.
+The C++ (Tasks 1–10) and the bridge-scriptable editor wiring (Tasks 0, 12, 13, the
+Task 16 `LogScuttler` trace, and Task 11's EQS graph) are committed. Two pieces are left; both
+need hands in the Unreal Editor because UE 5.8 exposes no reliable Python API for StateTree
+assets or full EQS validation.
 
-Do them in this order: **Task 11 → Task 14 → Task 16**.
+Do them in this order: **rebuild → Task 14 → Task 16**.
 
 ---
 
-## Task 11 — Configure `EQS_FleeToShadow`
+## Rebuild the editor binary first
 
-The asset exists but is **empty** (`/Game/Variant_Horror/AI/EQS_FleeToShadow`). Open it in the
-EQS editor and build the graph:
+The editor is currently running a **stale `UnrealEditor-SurvivalTemplate.dll`** — from before the
+`LogScuttler` trace was added (commit `3f74433`). PIE still logs the old `LogTemp: GA_FleeToShadow:
+no viable hiding spot` message. Trigger a build in Rider (Build → Build Solution / the hammer) so
+the committed C++ is compiled to disk, then the `LogScuttler` lines from Task 16 will appear.
 
-**Generator — Points: Donut**
-- Center: `EnvQueryContext_Querier`
-- Inner Radius: `300`
-- Outer Radius: `1200`
-- Number of Rings: `4`
-- Points Per Ring: `8`
-- Arc Direction / Arc Angle: leave full 360 for now
-- Project points to navigation: **on**
+---
 
-**Tests on the generator (in order):**
-1. **Distance** → to `EnvQueryContext_Player`. Scoring: Absolute, Factor `+1.0`, Equation Linear.
-2. **Trace** → Context `EnvQueryContext_Player`, `TraceFromContext = true`, Channel `Visibility`,
-   ItemHeightOffset ≈ `60`, ContextHeightOffset ≈ `60`. Purpose **Filter Only**, Filter `Match = false`
-   (keep points with line of sight to the player broken).
-3. **Pathfinding** → Context `EnvQueryContext_Querier`, `TestMode = PathExist`. Purpose **Filter Only**,
-   Filter `Match = true` (keep reachable).
-4. **Distance** → to `EnvQueryContext_Querier`. Purpose **Score Only**, Factor `-0.3` (tie-break toward nearer cover).
-5. **Direct Light** (`Direct Light` — the custom `UEnvQueryTest_DirectLight`) → Purpose **Filter Only**,
-   `Bool Value / bIsLit = false` (keep unlit), `TraceHeightOffset ≈ 60`.
+## Task 11 — Configure `EQS_FleeToShadow` — **DONE (committed `81cd02e`), tuning pending**
 
-**Query settings:** Run Mode **Single Best Item**. Save (compiles on save).
+The graph was built by hand and saved. Verified through the bridge:
+- Structurally complete: **Points: Donut** generator + 5 tests (Distance ×2, Trace, Pathfinding,
+  **Direct Light**) + `EnvQueryContext_Player` — the two custom C++ classes resolve, not "missing".
+- `ProjectionData.TraceMode = Navigation` is serialized (points project to navmesh).
+- Compiles and **executes with no errors** — `GA_FleeToShadow` ran `FEnvQueryRequest::Execute`
+  against it in PIE twice with no EQS errors/warnings/crashes.
 
-Optional sanity check: drop an `EQSTestingPawn` in `Lvl_Horror`, assign the query, confirm points
-generate and no test errors.
+**Open item for Task 16:** in the one scenario tested (Scuttler at ~(-2601, 150), player ~1600u
+away and not in sight) the query returned **0 items** ("no viable hiding spot"). That is plausibly
+scenario + an untuned donut rather than a config bug, but it must be confirmed with the EQS visual
+debugger in a real play session and the donut radii / test settings tuned until the query yields
+points. This is the core of Task 16.
 
-Commit: `git add SurvivalTemplate/Content/Variant_Horror/AI/EQS_FleeToShadow.uasset`
-→ `Configure EQS_FleeToShadow generator and tests`
+Notes from building it, for reference:
+- "Project points to navigation" is **Projection Data → Trace Mode = `Navigation`** (no simple
+  on/off checkbox). Set `Post Projection Vertical Offset ≈ 10`.
+- Direct Light's filter field is **"Bool Match"** (inherited `BoolValue`), under the Filter
+  category, shown once Test Purpose = `Filter Only`. Set it to `false` (keep unlit). There is no
+  `bIsLit` property — that was only a code comment.
+- Run Mode is **not** on the ROOT node — it is a requester-side setting and `GA_FleeToShadow.cpp`
+  already passes `EEnvQueryRunMode::SingleResult`.
 
 ---
 

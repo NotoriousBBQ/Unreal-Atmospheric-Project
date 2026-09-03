@@ -1842,3 +1842,10 @@ _Gathered 2026-09-02 via the Rider↔Unreal bridge (`ue_execute_python`) against
   `UStateTreeAIComponentSchema` context — typically set the schema to `StateTreeAIComponentSchema`
   and ensure the AIController/Actor context is bound) before the flee behavior can be observed.
   Budget extra editor time for this; it is the reason the Scuttler AI has not been seen working yet.
+
+- **RESOLVED (2026-09-02).** The deeper root cause was `BP_Scuttler`'s `Auto Possess AI = Spawned`
+  on a level-placed pawn → the AI controller was never created, so the StateTree never ran at all.
+  Fixed by setting it to `Placed in World or Spawned`, plus a new `AIC_Scuttler` controller
+  (schema `StateTreeAIComponentSchema`, holds the `StateTreeAIComponent`) and an `On Tick` +
+  `Scuttler Can See Player` transition out of `Idle`. Full write-up and the EQS test-config fixes
+  are in `2026-09-02-scuttler-flee-to-shadow-editor-handoff.md`. The feature works end to end.

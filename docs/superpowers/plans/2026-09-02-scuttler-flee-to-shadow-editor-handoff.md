@@ -1,20 +1,59 @@
-# Scuttler Flee-to-Shadow — remaining in-editor work
+# Scuttler Flee-to-Shadow — COMPLETE
 
-The C++ (Tasks 1–10) and the bridge-scriptable editor wiring (Tasks 0, 12, 13, the
-Task 16 `LogScuttler` trace, and Task 11's EQS graph) are committed. Two pieces are left; both
-need hands in the Unreal Editor because UE 5.8 exposes no reliable Python API for StateTree
-assets or full EQS validation.
+**Status (2026-09-02): working end to end.** In PIE the Scuttler sees the player, enters the
+`Fleeing` state, runs `EQS_FleeToShadow`, and paths to an unlit, out-of-sight point:
 
-Do them in this order: **rebuild → Task 14 → Task 16**.
+```
+LogScuttler: FleeToShadow activated (avatar=BP_Scuttler_C_..., query=EQS_FleeToShadow)
+LogScuttler: query finished, 18 items, chosen=X=-2741.9 Y=580.0 Z=17.5
+LogScuttler: move finished (success)
+```
+
+The sections below record the bugs found along the way — most were wrong values in this doc's own
+earlier instructions or in the base template, not in the C++.
+
+## Root causes fixed (beyond the plan tasks)
+
+1. **`BP_Scuttler` → `Auto Possess AI` was `Spawned`.** The Scuttler is placed in the level, so
+   with `Spawned` the AI controller was never created — no controller, no StateTree, nothing
+   consumed perception. Set to **`Placed in World or Spawned`**. (This is also why Task 0 found
+   `ST_Scuttler` "never ran": it was never possessed.)
+2. **The StateTree brain moved to a new controller.** `AI_Scuttler` was replaced with
+   `AIC_Scuttler` (parent `AIController`, schema `StateTreeAIComponentSchema`, holds the
+   `StateTreeAIComponent`). `BP_Scuttler`'s `AI Controller Class` points at it; the
+   `StateTreeAIComponent` was removed from the pawn.
+3. **StateTree never re-selected.** The tree's only transition trigger was `OnStateCompleted`, so
+   once it settled into `Idle` (whose task runs forever) it never re-checked the flee state's
+   `Scuttler Can See Player` enter condition. **Fix:** a transition on `Idle` with
+   Trigger `On Tick`, Condition `Scuttler Can See Player`, Transition To the flee state.
+4. **EQS Trace test Context was `Querier`.** It traced point→Scuttler instead of point→player, so
+   in an open room almost no point was "hidden". **Fix:** Context = `EnvQueryContext_Player`.
+5. **EQS Distance test was filtering with Float Max = 0.** A Distance test in a `Filter` purpose
+   with Max 0 keeps only points within 0 units — culls everything. **Fix:** both Distance tests
+   set to **`Score Only`** (no min/max). Optionally the player-distance one can be
+   `Filter and Score` with Max ≈ 1500 to cap how far the Scuttler will run.
+
+Also corrected from this doc's earlier draft: "Project points to navigation" = Donut
+Projection Data → **Trace Mode = `Navigation`**; Direct Light filter field is **"Bool Match"**
+(no `bIsLit` property); Run Mode is requester-side, not on the ROOT node; the Trace test's
+**Bool Match = `true`** (keep LOS-blocked points), not `false`.
+
+## Still uncommitted at hand-off
+
+`EQS_FleeToShadow.uasset`, `AIC_Scuttler.uasset`, `BP_Scuttler.uasset`, `ST_Scuttler.uasset`, and
+one `__ExternalActors__` actor for `Lvl_Horror`. `Config/DefaultEditor.ini` also shows a large
+diff — that is the editor rewriting the "Epic Headquarters" preview-scene profile, unrelated to
+this feature; revert it rather than commit.
 
 ---
 
-## Rebuild the editor binary first
+## Historical notes (superseded)
 
-The editor is currently running a **stale `UnrealEditor-SurvivalTemplate.dll`** — from before the
-`LogScuttler` trace was added (commit `3f74433`). PIE still logs the old `LogTemp: GA_FleeToShadow:
-no viable hiding spot` message. Trigger a build in Rider (Build → Build Solution / the hammer) so
-the committed C++ is compiled to disk, then the `LogScuttler` lines from Task 16 will appear.
+### Rebuild the editor binary
+
+If PIE logs the old `LogTemp: GA_FleeToShadow: no viable hiding spot` instead of `LogScuttler`,
+the editor is running a stale `UnrealEditor-SurvivalTemplate.dll`. Build in Rider
+(Build → Build Solution) so the committed C++ compiles to disk.
 
 ---
 

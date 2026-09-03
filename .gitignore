@@ -53,3 +53,4 @@ Logs/
 # ADD AS NEED BE
 Binaries/
 Intermediate/
+*.log

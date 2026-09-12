@@ -36,7 +36,9 @@ It started from Epic's **First Person BP** template and adds a **Horror** varian
   - `BP_Scuttler` (AI enemy) + `AI_Scuttler` (controller) + `ST_Scuttler` (StateTree brain)
   - `BP_HorrorLight` — flickering-light actor with dust-mote Niagara (`Light/Assets/`)
   - `UI/UI_Horror` — in-game HUD/widget
-- `Content/Variant_Horror/Input/` — Horror-specific Enhanced Input: `IMC_Horror`, `IA_Sprint`.
+- `Content/Variant_Horror/Input/` — `IMC_Horror`, a Horror-specific Enhanced Input mapping context.
+  Currently has no mappings: it held the sprint binding (`IA_Sprint`) until sprint was removed
+  (no more sprint input, meter, or speed toggle anywhere in `BP_HorrorCharacter`/`UI_Horror`).
 - `Content/Input/` — base Enhanced Input: `IMC_Default`, `IMC_MouseLook`, `IA_Move`, `IA_Look`, `IA_MouseLook`, `IA_Jump`, plus mobile touch UI in `Input/Touch/`.
 - `Content/LevelPrototyping/Interactable/` — reusable interactables: `BP_DoorFrame`, `BP_JumpPad`, `BP_WobbleTarget`.
 - `Content/Characters/Mannequins/` — Epic Manny/Quinn skeletal meshes, control rigs, and the pistol/rifle/unarmed animation sets.

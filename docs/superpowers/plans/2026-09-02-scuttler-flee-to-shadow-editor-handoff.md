@@ -32,6 +32,23 @@ earlier instructions or in the base template, not in the C++.
    with Max 0 keeps only points within 0 units — culls everything. **Fix:** both Distance tests
    set to **`Score Only`** (no min/max). Optionally the player-distance one can be
    `Filter and Score` with Max ≈ 1500 to cap how far the Scuttler will run.
+6. **`AIC_Scuttler`'s `PathFollowingComponent` had `Auto Activate = False`.** This is a class
+   default, not a runtime toggle — confirmed on the Blueprint's CDO. With it off, the component
+   never activates on `BeginPlay`, so it starts inactive and non-ticking; `AIController::MoveTo`
+   force-activates it for exactly one move, then it goes back to inactive. Every move after the
+   first still reports `EPathFollowingResult::Success`, but the pawn never actually translates —
+   confirmed live in PIE: `PathFollowingComponent.is_active()`/`is_component_tick_enabled()` were
+   both `False` on all 5 placed Scuttlers, and one had reached the exact X/Y of a logged EQS
+   "chosen" point yet stopped moving on every later flee cycle. **Fix:** check **Auto Activate**
+   on the `PathFollowingComponent` in `AIC_Scuttler`'s Components panel.
+7. **`ABP_Unarmed`'s `ShouldMove` ANDed `GroundSpeed > 0.01` with
+   `CharacterMovementComponent.GetCurrentAcceleration() != 0`.** The acceleration half of that
+   check is meaningless for AI nav movement: `Acceleration` snaps to zero the instant there is no
+   fresh per-tick input (e.g. between path segments), even while `Velocity`/`GroundSpeed` is still
+   near max and the character is genuinely moving — confirmed live: a fleeing Scuttler read
+   `GroundSpeed ≈ 600` with `ShouldMove = False` at the same instant. Player analog input feeds
+   `Acceleration` continuously so this never surfaced there. **Fix:** drop the `Acceleration != 0`
+   AND-clause; `ShouldMove` = `GroundSpeed > 0.01` (or a small threshold) alone.
 
 Also corrected from this doc's earlier draft: "Project points to navigation" = Donut
 Projection Data → **Trace Mode = `Navigation`**; Direct Light filter field is **"Bool Match"**

@@ -9,7 +9,10 @@ Intermediate/
 /Saved
 CachedAssetRegistry/
 CrashReportClient/
-Logs/
+**/Logs/
+**/Autosaves/
+**/Crashes/
+**/Intermediate/
 
 #################################
 # Visual Studio Generated Files #
@@ -42,6 +45,7 @@ Logs/
 
 # Solution and Project Files
 *.sln
+*.slnx
 *.csproj
 *.sln.DotSettings
 *.sln.DotSettings.user
@@ -50,3 +54,6 @@ Logs/
 # Miscellaneous Generated Files #
 #################################
 # ADD AS NEED BE
+Binaries/
+Intermediate/
+*.log

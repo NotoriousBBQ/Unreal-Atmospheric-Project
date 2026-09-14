@@ -3,9 +3,9 @@
 #################################
 /[Bb]uild
 /[Bb]uilds
-/Binaries
+Binaries/
 /DerivedDataCache
-/Intermediate
+Intermediate/
 /Saved
 CachedAssetRegistry/
 CrashReportClient/

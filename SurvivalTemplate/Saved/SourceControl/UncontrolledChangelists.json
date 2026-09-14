@@ -9,7 +9,6 @@
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/BP_HorrorCharacter.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/BP_Scuttler.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/ST_Scuttler.uasset",
-				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/AI_Scuttler.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/B/MN/E3OT6OC50M32OFC6ATI0UZ.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/B/IA/4JSDV03S3R1IM0L11PDLJ1.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/AI/EQS_FleeToShadow.uasset",
@@ -21,6 +20,14 @@
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/5/EJ/EICZ1A59PBOGTUDLNZ7052.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/8/OK/9U8EX2A7D6SNEVXQJGL1QY.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/__ExternalActors__/Variant_Horror/Lvl_Horror/8/KC/TO14U31JVKXU9L62B7NUMH.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/ABP_Scuttler.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/UI/UI_Horror.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Input/IMC_Horror.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/BP_HorrorPlayerController.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/BP_Hider.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Input/IA_Sprint.uasset",
+				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Blueprints/AI_Scuttler.uasset",
 				"C:/Projects/CreepyAtmosphere/SurvivalTemplate/Content/Variant_Horror/Temp.umap"
 			]
 		}

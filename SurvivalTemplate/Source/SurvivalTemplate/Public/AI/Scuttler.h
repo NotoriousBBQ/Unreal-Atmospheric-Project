@@ -27,9 +27,16 @@ public:
 	UFUNCTION(BlueprintPure, Category="AI")
 	bool CanSeePlayer() const { return bCanSeePlayer; }
 
-	/** Pushed by whichever actor owns the AIPerception delegate (pawn or controller). */
+	UFUNCTION(BlueprintPure, Category="AI")
+	bool HasSeenPlayer() const { return bHasSeenPlayer; }
+
+	/** Pushed by whichever actor owns the AIPerception	UFUNCTION(BlueprintPure, Category="AI")
+	bool CanSeePlayer() const { return bCanSeePlayer; } delegate (pawn or controller). */
 	UFUNCTION(BlueprintCallable, Category="AI")
 	void SetCanSeePlayer(bool bNewValue, AActor* InSeenPlayer = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category="AI")
+	void SetHasSeenPlayer(bool bNewValue);
 
 protected:
 	UPROPERTY(VisibleAnywhere, Category="Abilities")
@@ -40,6 +47,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category="AI")
 	bool bCanSeePlayer = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="AI")
+	bool bHasSeenPlayer = false;
 
 	UPROPERTY()
 	TObjectPtr<AActor> SeenPlayer = nullptr;

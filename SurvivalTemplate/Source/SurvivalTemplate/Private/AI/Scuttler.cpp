@@ -62,6 +62,11 @@ void AScuttler::SetCanSeePlayer(bool bNewValue, AActor* InSeenPlayer)
 	}
 }
 
+void AScuttler::SetHasSeenPlayer(bool bNewValue)
+{
+	bHasSeenPlayer = bNewValue;
+}
+
 void AScuttler::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
